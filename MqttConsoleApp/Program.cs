@@ -29,14 +29,15 @@ switch (qosLevel)
 
 //odabir topica
 Console.WriteLine("Please enter a topic:");
-var inputTopic = Console.ReadLine();
+var inputTopic="";
+// var inputTopic = Console.ReadLine();
 if (string.IsNullOrWhiteSpace(inputTopic))
 {
-    inputTopic = "test/demo";
+    inputTopic = "test/";
     Console.WriteLine("No topic entered, using test/demo.");
 }
 
-//podesavanja potrebna da bi se klijent povezso na broker
+//podesavanja potrebna da bi se klijent povezao na broker
 var options = new MqttClientOptionsBuilder().WithTcpServer("localhost", 1883).WithClientId("console-subscriber").Build();
 var topicFilter=new MqttTopicFilterBuilder().WithTopic(inputTopic).WithQualityOfServiceLevel(chooesnLevel).Build();
 
@@ -100,9 +101,9 @@ try
 
 
 Console.WriteLine("Press any key to disconnect");
-Console.ReadKey();
+//Console.ReadKey();
 //za debugging nije radilo sa Console.ReadKey() pa sam pisala Console.ReadLine()
-//Console.ReadLine();
+Console.ReadLine();
 
 exiting=true;
 
