@@ -29,11 +29,10 @@ switch (qosLevel)
 
 //odabir topica
 Console.WriteLine("Please enter a topic:");
-var inputTopic="";
-// var inputTopic = Console.ReadLine();
+var inputTopic = Console.ReadLine();
 if (string.IsNullOrWhiteSpace(inputTopic))
 {
-    inputTopic = "test/";
+    inputTopic = "test/demo";
     Console.WriteLine("No topic entered, using test/demo.");
 }
 
@@ -50,7 +49,7 @@ client.ApplicationMessageReceivedAsync += e =>
     var qos = (int)e.ApplicationMessage.QualityOfServiceLevel;
     var retain = e.ApplicationMessage.Retain;
     var time = DateTime.Now.ToString("HH:mm:ss");
-    Console.WriteLine("[" + time + "] Topic: " + topic + "| Message:  " + payload + "| QoS:  " + qos + "| Retain: " + retain);
+    Console.WriteLine("[" + time + "] \nTopic: " + topic + "\nMessage:  " + payload + "\nQoS:  " + qos + "\nRetain: " + retain);
     return Task.CompletedTask;
 };
 
@@ -71,7 +70,7 @@ client.DisconnectedAsync += async e =>
         }
         catch (Exception ex)
         {
-            Console.WriteLine("Pokusaj " + i + " nije uspeo" + ex.Message);
+            Console.WriteLine("Attempt " + (i + 1) + " failed: " + ex.Message);
         }
     }
 };
@@ -101,9 +100,9 @@ try
 
 
 Console.WriteLine("Press any key to disconnect");
-//Console.ReadKey();
+Console.ReadKey();
 //za debugging nije radilo sa Console.ReadKey() pa sam pisala Console.ReadLine()
-Console.ReadLine();
+//Console.ReadLine();
 
 exiting=true;
 
