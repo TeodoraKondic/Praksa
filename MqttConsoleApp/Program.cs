@@ -6,6 +6,15 @@ using MQTTnet.Protocol;
 var factory = new MqttFactory();
 var client = factory.CreateMqttClient();
 var exiting = false;
+var reconnecting = false;
+var topics = new List<string>();
+
+Console.WriteLine("Enter client name:");
+var clientName = Console.ReadLine()?.Trim();
+if (string.IsNullOrWhiteSpace(clientName))
+{
+    clientName = "app" + Random.Shared.Next(1000, 9999);
+}
 
 Console.WriteLine("Choose QoS level (0/1/2):");
 var qosLevel = Console.ReadLine()?.Trim();
@@ -24,16 +33,8 @@ switch (qosLevel)
     default: throw new ArgumentException("Invalid QoS level.");
 }
 
-Console.WriteLine("Please enter a topic:");
-var inputTopic = Console.ReadLine();
-if (string.IsNullOrWhiteSpace(inputTopic))
-{
-    inputTopic = "test/demo";
-    Console.WriteLine("No topic entered, using test/demo.");
-}
 
-var options = new MqttClientOptionsBuilder().WithTcpServer("localhost", 1883).WithClientId("console-subscriber").Build();
-var topicFilter = new MqttTopicFilterBuilder().WithTopic(inputTopic).WithQualityOfServiceLevel(chosenLevel).Build();
+var options = new MqttClientOptionsBuilder().WithTcpServer("localhost", 1883).WithClientId(clientName).Build();
 
 
 client.ApplicationMessageReceivedAsync += e =>
@@ -50,24 +51,40 @@ client.ApplicationMessageReceivedAsync += e =>
 
 client.DisconnectedAsync += async e =>
 {
-    if (exiting)
+    if (exiting || reconnecting)
         return;
 
+    reconnecting = true;
+
     Console.WriteLine("No connection with broker.");
-    for (int i = 0; i < 3; i++)
+    try
     {
-        try
+        for (int i = 0; i < 3; i++)
         {
-            await Task.Delay(TimeSpan.FromSeconds(2));
-            await client.ConnectAsync(options, CancellationToken.None);
-            await client.SubscribeAsync(topicFilter);
-            break;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Attempt {i + 1} failed: {ex.Message}");
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                if (!client.IsConnected)
+                    await client.ConnectAsync(options, CancellationToken.None);
+
+                foreach (var savedTopic in topics.ToList())
+                {
+                    var savedFilter = new MqttTopicFilterBuilder().WithTopic(savedTopic).WithQualityOfServiceLevel(chosenLevel).Build();
+                    await client.SubscribeAsync(savedFilter);
+                }
+                break;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Attempt {i + 1} failed: {ex.Message}");
+            }
         }
     }
+    finally
+    {
+        reconnecting = false;
+    }
+
 };
 
 
@@ -83,24 +100,88 @@ catch (Exception ex)
     return;
 }
 
-try
+
+await SubscribeTo("test/#");
+
+static void PrintHelp()
 {
-    await client.SubscribeAsync(topicFilter);
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"Subscription error: {ex.Message}");
+    Console.WriteLine("Commands");
+    Console.WriteLine("  p     publish a message");
+    Console.WriteLine("  s     subscribe to a new topic");
+    Console.WriteLine("  list  show subscribed topics");
+    Console.WriteLine("  help  show this list");
+    Console.WriteLine("  q     quit");
 }
 
+PrintHelp();
+var running = true;
+while (running)
+{
+    Console.Write("> ");
+    var command = Console.ReadLine()?.Trim().ToLower();
 
-Console.WriteLine("Publish mode. Type exit as topic to quit.");
-await PublishMessages(client);
+    switch (command)
+    {
+        case "p":
+            await PublishMessages(client);
+            break;
+        case "s":
+            Console.WriteLine("Topic for subscribe");
+            var newTopic = Console.ReadLine()?.Trim();
+            if (string.IsNullOrWhiteSpace(newTopic))
+            {
+                Console.WriteLine("Topic cannot be empty.");
+                continue;
+            }
+            else
+            {
+                await SubscribeTo(newTopic);
+            }
+            break;
+        case "q":
+            running = false;
+            break;
+        case "list":
+            Console.WriteLine("Currently subscribed to topics:");
+            foreach (var listedTopic in topics)
+            {
+                Console.WriteLine($" - {listedTopic}");
+            }
+            break;
+        case "help":
+            PrintHelp();
+            break;
+        default:
+            Console.WriteLine("Unknown command. Type help.");
+            break;
+    }
+}
+
 
 exiting = true;
 
-
 await client.DisconnectAsync();
 Console.WriteLine("Disconnected");
+
+async Task SubscribeTo(string topic)
+{
+    try
+    {
+        var filter = new MqttTopicFilterBuilder().WithTopic(topic).WithQualityOfServiceLevel(chosenLevel).Build();
+        await client.SubscribeAsync(filter);
+        if (!topics.Contains(topic))
+            topics.Add(topic);
+
+        Console.WriteLine($"Subscribed to: {topic} (QoS {(int)chosenLevel})");
+
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Subscription error: {ex.Message}");
+    }
+}
+
+
 
 static async Task PublishMessages(IMqttClient client)
 {
@@ -114,7 +195,7 @@ static async Task PublishMessages(IMqttClient client)
         if (string.IsNullOrWhiteSpace(topic))
         {
             Console.WriteLine("Topic cannot be empty.");
-            continue; 
+            continue;
         }
 
         Console.Write("Message: ");
