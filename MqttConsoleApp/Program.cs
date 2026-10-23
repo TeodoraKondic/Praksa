@@ -16,13 +16,13 @@ MqttQualityOfServiceLevel chooesnLevel;
 switch (qosLevel)
 {
     case "0":
-        chooesnLevel=MqttQualityOfServiceLevel.AtMostOnce;
+        chooesnLevel = MqttQualityOfServiceLevel.AtMostOnce;
         break;
     case "1":
-        chooesnLevel=MqttQualityOfServiceLevel.AtLeastOnce;
+        chooesnLevel = MqttQualityOfServiceLevel.AtLeastOnce;
         break;
     case "2":
-        chooesnLevel=MqttQualityOfServiceLevel.ExactlyOnce;
+        chooesnLevel = MqttQualityOfServiceLevel.ExactlyOnce;
         break;
     default: throw new ArgumentException("Invalid QoS level.");
 }
@@ -38,7 +38,7 @@ if (string.IsNullOrWhiteSpace(inputTopic))
 
 //podesavanja potrebna da bi se klijent povezao na broker
 var options = new MqttClientOptionsBuilder().WithTcpServer("localhost", 1883).WithClientId("console-subscriber").Build();
-var topicFilter=new MqttTopicFilterBuilder().WithTopic(inputTopic).WithQualityOfServiceLevel(chooesnLevel).Build();
+var topicFilter = new MqttTopicFilterBuilder().WithTopic(inputTopic).WithQualityOfServiceLevel(chooesnLevel).Build();
 
 
 //event handler tj sta treba da se desi kada stigne poruka klijentu
@@ -92,20 +92,93 @@ catch (Exception ex)
 try
 {
     await client.SubscribeAsync(topicFilter);
-} catch(Exception ex)
+}
+catch (Exception ex)
 {
     Console.WriteLine("Subscription error: " + ex.Message);
 }
 
 
 
-Console.WriteLine("Press any key to disconnect");
-Console.ReadKey();
+//Console.WriteLine("Press any key to disconnect");
+//Console.ReadKey();
 //za debugging nije radilo sa Console.ReadKey() pa sam pisala Console.ReadLine()
 //Console.ReadLine();
 
-exiting=true;
+Console.WriteLine("Publish mode. Type exit as topic to quit.");
+await PublishMessages(client);
+
+exiting = true;
 
 //prekid veze izmedju klijenta i brokera
 await client.DisconnectAsync();
 Console.WriteLine("Disconnected");
+
+static async Task PublishMessages(IMqttClient client)
+{
+    while (true)
+    {
+        Console.WriteLine("Please enter a topic (or type 'exit' to quit):");
+        var topic = Console.ReadLine();
+        if (topic != null && topic.Trim().ToLower() == "exit")
+            return;
+
+        if (string.IsNullOrWhiteSpace(topic))
+        {
+            Console.WriteLine("Topic cannot be empty.");
+            continue; 
+        }
+
+        Console.Write("Message: ");
+        var text = Console.ReadLine();
+        if (text == null)
+        {
+            text = "";
+        }
+
+        MqttQualityOfServiceLevel level=MqttQualityOfServiceLevel.AtMostOnce;
+        var validLevel = false;
+        while (!validLevel)
+        {
+            Console.WriteLine("Choose QoS level (0/1/2):");
+            var qos = Console.ReadLine();
+            switch (qos)
+            {
+                case "0":
+                    level = MqttQualityOfServiceLevel.AtMostOnce;
+                    validLevel = true;
+                    break;
+                case "1":
+                    level = MqttQualityOfServiceLevel.AtLeastOnce;
+                    validLevel = true;
+                    break;
+                case "2":
+                    level = MqttQualityOfServiceLevel.ExactlyOnce;
+                    validLevel = true;
+                    break;
+                default:
+                    Console.WriteLine("Invalid QoS. Enter 0, 1 or 2.");
+                    break;
+
+            }
+        }
+
+        try
+        {
+            var message = new MqttApplicationMessageBuilder().WithTopic(topic.Trim()).WithPayload(text).WithQualityOfServiceLevel(level).Build();
+
+            await client.PublishAsync(message, CancellationToken.None);
+
+            var time = DateTime.Now.ToString("HH:mm:ss");
+            Console.WriteLine("[" + time + "]\nSent to " + topic.Trim() + "\n(QoS " + (int)level + "): " + text);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Could not send message: " + ex.Message);
+        }
+
+
+    }
+
+
+}
