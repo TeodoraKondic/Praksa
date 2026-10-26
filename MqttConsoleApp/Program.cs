@@ -1,13 +1,7 @@
-﻿using System.Text;
+﻿
 using MQTTnet;
-using MQTTnet.Client;
 using MQTTnet.Protocol;
 
-var factory = new MqttFactory();
-var client = factory.CreateMqttClient();
-var exiting = false;
-var reconnecting = false;
-var topics = new List<string>();
 
 Console.WriteLine("Enter client name:");
 var clientName = Console.ReadLine()?.Trim();
@@ -34,74 +28,13 @@ switch (qosLevel)
 }
 
 
-var options = new MqttClientOptionsBuilder().WithTcpServer("localhost", 1883).WithClientId(clientName).Build();
-
-
-client.ApplicationMessageReceivedAsync += e =>
-{
-    var topic = e.ApplicationMessage.Topic;
-    var payload = Encoding.UTF8.GetString(e.ApplicationMessage.PayloadSegment);
-    var qos = (int)e.ApplicationMessage.QualityOfServiceLevel;
-    var retain = e.ApplicationMessage.Retain;
-    var time = DateTime.Now.ToString("HH:mm:ss");
-    Console.WriteLine($"[{time}]\nTopic: {topic}\nMessage: {payload}\nQoS: {qos}\nRetain: {retain}");
-    return Task.CompletedTask;
-};
-
-
-client.DisconnectedAsync += async e =>
-{
-    if (exiting || reconnecting)
-        return;
-
-    reconnecting = true;
-
-    Console.WriteLine("No connection with broker.");
-    try
-    {
-        for (int i = 0; i < 3; i++)
-        {
-            try
-            {
-                await Task.Delay(TimeSpan.FromSeconds(2));
-                if (!client.IsConnected)
-                    await client.ConnectAsync(options, CancellationToken.None);
-
-                foreach (var savedTopic in topics.ToList())
-                {
-                    var savedFilter = new MqttTopicFilterBuilder().WithTopic(savedTopic).WithQualityOfServiceLevel(chosenLevel).Build();
-                    await client.SubscribeAsync(savedFilter);
-                }
-                break;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Attempt {i + 1} failed: {ex.Message}");
-            }
-        }
-    }
-    finally
-    {
-        reconnecting = false;
-    }
-
-};
-
-
-
-try
-{
-    await client.ConnectAsync(options, CancellationToken.None);
-    Console.WriteLine("Connected");
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"Connection error: {ex.Message}");
+var mqttClient= new MqttSubscriberClient(clientName,chosenLevel);
+if(! await mqttClient.ConnectAsync())
     return;
-}
 
 
-await SubscribeTo("test/#");
+
+await mqttClient.SubscribeTo("test/#");
 
 static void PrintHelp()
 {
@@ -123,7 +56,7 @@ while (running)
     switch (command)
     {
         case "p":
-            await PublishMessages(client);
+            await PublishMessages(mqttClient);
             break;
         case "s":
             Console.WriteLine("Topic for subscribe");
@@ -135,7 +68,7 @@ while (running)
             }
             else
             {
-                await SubscribeTo(newTopic);
+                await mqttClient.SubscribeTo(newTopic);
             }
             break;
         case "q":
@@ -143,7 +76,7 @@ while (running)
             break;
         case "list":
             Console.WriteLine("Currently subscribed to topics:");
-            foreach (var listedTopic in topics)
+            foreach (var listedTopic in mqttClient.Topics)
             {
                 Console.WriteLine($" - {listedTopic}");
             }
@@ -158,32 +91,11 @@ while (running)
 }
 
 
-exiting = true;
-
-await client.DisconnectAsync();
+await mqttClient.DisconnectAsync();
 Console.WriteLine("Disconnected");
 
-async Task SubscribeTo(string topic)
-{
-    try
-    {
-        var filter = new MqttTopicFilterBuilder().WithTopic(topic).WithQualityOfServiceLevel(chosenLevel).Build();
-        await client.SubscribeAsync(filter);
-        if (!topics.Contains(topic))
-            topics.Add(topic);
 
-        Console.WriteLine($"Subscribed to: {topic} (QoS {(int)chosenLevel})");
-
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Subscription error: {ex.Message}");
-    }
-}
-
-
-
-static async Task PublishMessages(IMqttClient client)
+static async Task PublishMessages(MqttSubscriberClient mqttClient)
 {
     while (true)
     {
@@ -236,7 +148,7 @@ static async Task PublishMessages(IMqttClient client)
         {
             var message = new MqttApplicationMessageBuilder().WithTopic(topic.Trim()).WithPayload(text).WithQualityOfServiceLevel(level).Build();
 
-            await client.PublishAsync(message, CancellationToken.None);
+            await mqttClient.PublishAsync(topic.Trim(), text,level);
 
             var time = DateTime.Now.ToString("HH:mm:ss");
             Console.WriteLine($"[{time}]\nSent to {topic.Trim()}\n(QoS {(int)level}): {text}");
