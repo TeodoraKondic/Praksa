@@ -11,11 +11,11 @@ public class MqttSubscriberClient
     private readonly List<string> topics = new List<string>();
     private bool exiting = false;
     private bool reconnecting = false;
-    private readonly MessageLogger logger;
+    private readonly IMessageLogger logger;
 
     public IReadOnlyList<string> Topics => topics;
 
-    public MqttSubscriberClient(string clientName, MqttQualityOfServiceLevel chosenLevel, MessageLogger logger)
+    public MqttSubscriberClient(string clientName, MqttQualityOfServiceLevel chosenLevel, IMessageLogger logger)
     {
         this.chosenLevel = chosenLevel;
         this.logger = logger;
@@ -32,10 +32,6 @@ public class MqttSubscriberClient
             var payload = Encoding.UTF8.GetString(e.ApplicationMessage.PayloadSegment);
             var qos = (int)e.ApplicationMessage.QualityOfServiceLevel;
             var retain = e.ApplicationMessage.Retain;
-            var time = DateTime.Now.ToString("HH:mm:ss");
-
-            Console.WriteLine(
-                $"[{time}]\nTopic: {topic}\nMessage: {payload}\nQoS: {qos}\nRetain: {retain}");
 
             try
             {

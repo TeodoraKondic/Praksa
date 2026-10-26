@@ -1,7 +1,7 @@
-public class MessageLogger
+public class FileMessageLogger :IMessageLogger
 {
     public string _logFilePath {get;}
-    public MessageLogger(string logFilePath)
+    public FileMessageLogger(string logFilePath)
     {
         _logFilePath=logFilePath;
     }

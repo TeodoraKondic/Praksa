@@ -1,6 +1,4 @@
-﻿
-using MQTTnet;
-using MQTTnet.Protocol;
+﻿using MQTTnet.Protocol;
 
 
 Console.WriteLine("Enter client name:");
@@ -27,8 +25,30 @@ switch (qosLevel)
     default: throw new ArgumentException("Invalid QoS level.");
 }
 
-var logger=new MessageLogger("mqtt_messages.log");
+
+Console.WriteLine("Choose logger (1 = console, 2 = file, 3 = both):");
+IMessageLogger? logger=null;
+while (logger == null)
+{
+    var loggerChoice=Console.ReadLine()?.Trim();
+    switch (loggerChoice)
+    {
+        case "1":
+            logger = new ConsoleMessageLogger();
+            break;
+        case "2":
+            logger = new FileMessageLogger("mqtt_messages.log");
+            break;
+        case "3":
+            logger=new CompositeMessageLogger(new ConsoleMessageLogger(), new FileMessageLogger("mqtt_messages.log"));
+            break;
+        default:
+            Console.WriteLine("Invalid choice. Enter 1, 2 or 3.");
+            break;
+    }
+}
 var mqttClient= new MqttSubscriberClient(clientName,chosenLevel,logger);
+
 if(! await mqttClient.ConnectAsync())
     return;
 
@@ -146,7 +166,6 @@ static async Task PublishMessages(MqttSubscriberClient mqttClient)
 
         try
         {
-            var message = new MqttApplicationMessageBuilder().WithTopic(topic.Trim()).WithPayload(text).WithQualityOfServiceLevel(level).Build();
 
             await mqttClient.PublishAsync(topic.Trim(), text,level);
 
