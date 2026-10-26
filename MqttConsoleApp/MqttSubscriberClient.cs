@@ -11,27 +11,40 @@ public class MqttSubscriberClient
     private readonly List<string> topics = new List<string>();
     private bool exiting = false;
     private bool reconnecting = false;
+    private readonly MessageLogger logger;
 
     public IReadOnlyList<string> Topics => topics;
 
-    public MqttSubscriberClient(string clientName, MqttQualityOfServiceLevel chosenLevel)
+    public MqttSubscriberClient(string clientName, MqttQualityOfServiceLevel chosenLevel, MessageLogger logger)
     {
         this.chosenLevel = chosenLevel;
+        this.logger = logger;
 
         var factory = new MqttFactory();
         client = factory.CreateMqttClient();
 
         options = new MqttClientOptionsBuilder().WithTcpServer("localhost", 1883).WithClientId(clientName).Build();
 
-        client.ApplicationMessageReceivedAsync += e =>
+        client.ApplicationMessageReceivedAsync += async e =>
         {
+            
             var topic = e.ApplicationMessage.Topic;
             var payload = Encoding.UTF8.GetString(e.ApplicationMessage.PayloadSegment);
             var qos = (int)e.ApplicationMessage.QualityOfServiceLevel;
             var retain = e.ApplicationMessage.Retain;
             var time = DateTime.Now.ToString("HH:mm:ss");
-            Console.WriteLine($"[{time}]\nTopic: {topic}\nMessage: {payload}\nQoS: {qos}\nRetain: {retain}");
-            return Task.CompletedTask;
+
+            Console.WriteLine(
+                $"[{time}]\nTopic: {topic}\nMessage: {payload}\nQoS: {qos}\nRetain: {retain}");
+
+            try
+            {
+                await logger.LogMessageAsync(topic, payload, qos, retain);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Could not write to log: {ex.Message}");
+            }
         };
 
         client.DisconnectedAsync += async e =>

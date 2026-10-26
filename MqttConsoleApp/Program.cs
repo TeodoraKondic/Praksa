@@ -27,8 +27,8 @@ switch (qosLevel)
     default: throw new ArgumentException("Invalid QoS level.");
 }
 
-
-var mqttClient= new MqttSubscriberClient(clientName,chosenLevel);
+var logger=new MessageLogger("mqtt_messages.log");
+var mqttClient= new MqttSubscriberClient(clientName,chosenLevel,logger);
 if(! await mqttClient.ConnectAsync())
     return;
 
