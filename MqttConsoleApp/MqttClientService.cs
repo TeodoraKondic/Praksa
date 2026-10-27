@@ -1,0 +1,138 @@
+using System.Text;
+using MQTTnet;
+using MQTTnet.Client;
+using MQTTnet.Protocol;
+
+public class MqttClientService
+{
+    private readonly IMqttClient client;
+    private readonly MqttClientOptions options;
+    private readonly MqttQualityOfServiceLevel chosenLevel;
+    private readonly List<string> topics = new List<string>();
+    private bool exiting = false;
+    private bool reconnecting = false;
+    private readonly IMessageLogger logger;
+
+    public IReadOnlyList<string> Topics => topics;
+
+    public MqttClientService (string clientName, MqttQualityOfServiceLevel chosenLevel, IMessageLogger logger)
+    {
+        this.chosenLevel = chosenLevel;
+        this.logger = logger;
+
+        var factory = new MqttFactory();
+        client = factory.CreateMqttClient();
+
+        options = new MqttClientOptionsBuilder().WithTcpServer("localhost", 1883).WithClientId(clientName).Build();
+
+        client.ApplicationMessageReceivedAsync += async e =>
+        {
+            
+            var topic = e.ApplicationMessage.Topic;
+            var payload = Encoding.UTF8.GetString(e.ApplicationMessage.PayloadSegment);
+            var qos = (int)e.ApplicationMessage.QualityOfServiceLevel;
+            var retain = e.ApplicationMessage.Retain;
+
+            try
+            {
+                await logger.LogMessageAsync(topic, payload, qos, retain);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Could not write to log: {ex.Message}");
+            }
+        };
+
+        client.DisconnectedAsync += async e =>
+        {
+            if (exiting || reconnecting)
+            {
+                return;
+            }
+                
+
+            reconnecting = true;
+
+            Console.WriteLine("No connection with broker.");
+            try
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(2));
+                        if (!client.IsConnected)
+                        {
+                            await client.ConnectAsync(options, CancellationToken.None);
+                        }
+                            
+
+                        foreach (var savedTopic in topics.ToList())
+                        {
+                            var savedFilter = new MqttTopicFilterBuilder().WithTopic(savedTopic).WithQualityOfServiceLevel(chosenLevel).Build();
+                            await client.SubscribeAsync(savedFilter);
+                        }
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Attempt {i + 1} failed: {ex.Message}");
+                    }
+                }
+            }
+            finally
+            {
+                reconnecting = false;
+            }
+        };
+    }
+
+    public async Task<bool> ConnectAsync()
+    {
+        try
+        {
+            await client.ConnectAsync(options, CancellationToken.None);
+            Console.WriteLine("Connected");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Connection error: {ex.Message}");
+            return false;
+        }
+    }
+
+    public async Task SubscribeTo(string topic)
+    {
+        try
+        {
+            var filter = new MqttTopicFilterBuilder().WithTopic(topic).WithQualityOfServiceLevel(chosenLevel).Build();
+            await client.SubscribeAsync(filter);
+            if (!topics.Contains(topic))
+            {
+                topics.Add(topic);
+            }
+                
+
+            Console.WriteLine($"Subscribed to: {topic} (QoS {(int)chosenLevel})");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Subscription error: {ex.Message}");
+        }
+    }
+
+    public async Task PublishAsync(string topic, string text, MqttQualityOfServiceLevel level)
+    {
+        var message = new MqttApplicationMessageBuilder().WithTopic(topic).WithPayload(text).WithQualityOfServiceLevel(level).Build();
+
+        await client.PublishAsync(message, CancellationToken.None);
+    }
+
+    public async Task DisconnectAsync()
+    {
+        exiting = true;
+
+        await client.DisconnectAsync();
+    }
+}
