@@ -3,7 +3,7 @@ using MQTTnet;
 using MQTTnet.Client;
 using MQTTnet.Protocol;
 
-public class MqttSubscriberClient
+public class MqttClientService
 {
     private readonly IMqttClient client;
     private readonly MqttClientOptions options;
@@ -15,7 +15,7 @@ public class MqttSubscriberClient
 
     public IReadOnlyList<string> Topics => topics;
 
-    public MqttSubscriberClient(string clientName, MqttQualityOfServiceLevel chosenLevel, IMessageLogger logger)
+    public MqttClientService (string clientName, MqttQualityOfServiceLevel chosenLevel, IMessageLogger logger)
     {
         this.chosenLevel = chosenLevel;
         this.logger = logger;
@@ -46,7 +46,10 @@ public class MqttSubscriberClient
         client.DisconnectedAsync += async e =>
         {
             if (exiting || reconnecting)
+            {
                 return;
+            }
+                
 
             reconnecting = true;
 
@@ -59,7 +62,10 @@ public class MqttSubscriberClient
                     {
                         await Task.Delay(TimeSpan.FromSeconds(2));
                         if (!client.IsConnected)
+                        {
                             await client.ConnectAsync(options, CancellationToken.None);
+                        }
+                            
 
                         foreach (var savedTopic in topics.ToList())
                         {
@@ -103,7 +109,10 @@ public class MqttSubscriberClient
             var filter = new MqttTopicFilterBuilder().WithTopic(topic).WithQualityOfServiceLevel(chosenLevel).Build();
             await client.SubscribeAsync(filter);
             if (!topics.Contains(topic))
+            {
                 topics.Add(topic);
+            }
+                
 
             Console.WriteLine($"Subscribed to: {topic} (QoS {(int)chosenLevel})");
         }

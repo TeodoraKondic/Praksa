@@ -1,6 +1,6 @@
 public class CompositeMessageLogger : IMessageLogger
 {
-    private List<IMessageLogger> _loggers;
+    private readonly List<IMessageLogger> _loggers;
 
     public CompositeMessageLogger(params IMessageLogger[] loggers)
     {

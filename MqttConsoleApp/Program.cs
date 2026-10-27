@@ -9,48 +9,56 @@ if (string.IsNullOrWhiteSpace(clientName))
 }
 
 Console.WriteLine("Choose QoS level (0/1/2):");
-var qosLevel = Console.ReadLine()?.Trim();
+
 MqttQualityOfServiceLevel chosenLevel;
-switch (qosLevel)
+while (true)
 {
-    case "0":
-        chosenLevel = MqttQualityOfServiceLevel.AtMostOnce;
+    var qosLevel = Console.ReadLine()?.Trim();
+    if (qosLevel == null)
+    {
+        return;
+    }
+    if (TryParseQoS(qosLevel, out chosenLevel))
+    {
         break;
-    case "1":
-        chosenLevel = MqttQualityOfServiceLevel.AtLeastOnce;
-        break;
-    case "2":
-        chosenLevel = MqttQualityOfServiceLevel.ExactlyOnce;
-        break;
-    default: throw new ArgumentException("Invalid QoS level.");
+    }
+    Console.WriteLine("Invalid QoS. Enter 0, 1 or 2.");
+    break;
 }
 
-
+const string logFileName = "mqtt_messages.log";
 Console.WriteLine("Choose logger (1 = console, 2 = file, 3 = both):");
-IMessageLogger? logger=null;
+IMessageLogger? logger = null;
 while (logger == null)
 {
-    var loggerChoice=Console.ReadLine()?.Trim();
+    var loggerChoice = Console.ReadLine()?.Trim();
+    if (loggerChoice == null)
+    {
+        return;
+    }
     switch (loggerChoice)
     {
         case "1":
             logger = new ConsoleMessageLogger();
             break;
         case "2":
-            logger = new FileMessageLogger("mqtt_messages.log");
+            logger = new FileMessageLogger(logFileName);
             break;
         case "3":
-            logger=new CompositeMessageLogger(new ConsoleMessageLogger(), new FileMessageLogger("mqtt_messages.log"));
+            logger = new CompositeMessageLogger(new ConsoleMessageLogger(), new FileMessageLogger(logFileName));
             break;
         default:
             Console.WriteLine("Invalid choice. Enter 1, 2 or 3.");
             break;
     }
 }
-var mqttClient= new MqttSubscriberClient(clientName,chosenLevel,logger);
+var mqttClient = new MqttClientService(clientName, chosenLevel, logger);
 
-if(! await mqttClient.ConnectAsync())
+if (!await mqttClient.ConnectAsync())
+{
     return;
+}
+
 
 
 
@@ -66,12 +74,35 @@ static void PrintHelp()
     Console.WriteLine("  q     quit");
 }
 
+static bool TryParseQoS(string? input, out MqttQualityOfServiceLevel level)
+{
+    switch (input)
+    {
+        case "0":
+            level = MqttQualityOfServiceLevel.AtMostOnce;
+            return true;
+        case "1":
+            level = MqttQualityOfServiceLevel.AtLeastOnce;
+            return true;
+        case "2":
+            level = MqttQualityOfServiceLevel.ExactlyOnce;
+            return true;
+        default:
+            level = MqttQualityOfServiceLevel.AtMostOnce;
+            return false;
+    }
+}
+
 PrintHelp();
 var running = true;
 while (running)
 {
     Console.Write("> ");
     var command = Console.ReadLine()?.Trim().ToLower();
+    if (command == null)
+    {
+        break;
+    }
 
     switch (command)
     {
@@ -115,12 +146,16 @@ await mqttClient.DisconnectAsync();
 Console.WriteLine("Disconnected");
 
 
-static async Task PublishMessages(MqttSubscriberClient mqttClient)
+static async Task PublishMessages(MqttClientService mqttClient)
 {
     while (true)
     {
         Console.WriteLine("Please enter a topic (or type 'exit' to quit):");
         var topic = Console.ReadLine();
+        if (topic == null)
+        {
+            return;
+        }
         if (topic != null && topic.Trim().ToLower() == "exit")
             return;
 
@@ -138,36 +173,25 @@ static async Task PublishMessages(MqttSubscriberClient mqttClient)
         }
 
         MqttQualityOfServiceLevel level = MqttQualityOfServiceLevel.AtMostOnce;
-        var validLevel = false;
-        while (!validLevel)
+        while (true)
         {
             Console.WriteLine("Choose QoS level (0/1/2):");
             var qos = Console.ReadLine()?.Trim();
-            switch (qos)
+            if (qos == null)
             {
-                case "0":
-                    level = MqttQualityOfServiceLevel.AtMostOnce;
-                    validLevel = true;
-                    break;
-                case "1":
-                    level = MqttQualityOfServiceLevel.AtLeastOnce;
-                    validLevel = true;
-                    break;
-                case "2":
-                    level = MqttQualityOfServiceLevel.ExactlyOnce;
-                    validLevel = true;
-                    break;
-                default:
-                    Console.WriteLine("Invalid QoS. Enter 0, 1 or 2.");
-                    break;
-
+                return;
             }
+            if (TryParseQoS(qos, out level))
+            {
+                break;
+            }
+            Console.WriteLine("Invalid QoS. Enter 0, 1 or 2.");
         }
+
 
         try
         {
-
-            await mqttClient.PublishAsync(topic.Trim(), text,level);
+            await mqttClient.PublishAsync(topic.Trim(), text, level);
 
             var time = DateTime.Now.ToString("HH:mm:ss");
             Console.WriteLine($"[{time}]\nSent to {topic.Trim()}\n(QoS {(int)level}): {text}");
