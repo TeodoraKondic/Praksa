@@ -1,0 +1,92 @@
+{
+	"info": {
+		"_postman_id": "a0ac0081-bba8-42b0-bf5f-c3555c1aca1a",
+		"name": "MQTT REST API",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "59244658",
+		"_collection_link": "https://teodorakondic-7188465.postman.co/workspace/Teodora's-Workspace~cc28e19c-ad9d-42eb-893d-a061e082b8e5/collection/59244658-a0ac0081-bba8-42b0-bf5f-c3555c1aca1a?action=share&source=collection_link&creator=59244658"
+	},
+	"item": [
+		{
+			"name": "Subscribe",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"topic\":\"test/api\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:5246/api/mqtt/subscribe",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "5246",
+					"path": [
+						"api",
+						"mqtt",
+						"subscribe"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Pulish",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"topic\":\"test/api\",\n    \"payload\":\"Hello from API\",\n    \"qos\":1\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:5246/api/mqtt/publish",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "5246",
+					"path": [
+						"api",
+						"mqtt",
+						"publish"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Messages",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:5246/api/mqtt/messages",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "5246",
+					"path": [
+						"api",
+						"mqtt",
+						"messages"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
