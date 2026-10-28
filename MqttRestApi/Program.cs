@@ -7,19 +7,11 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddSingleton<MqttService>();
+builder.Services.Configure<MqttSettings>(builder.Configuration.GetSection("Mqtt"));
+builder.Services.AddSingleton<IMqttService, MqttService>();
+builder.Services.AddHostedService<MqttReconnectService>();
 
 var app = builder.Build();
-var mqttService=app.Services.GetRequiredService<MqttService>();
-
-try
-{
-    await mqttService.ConnectAsync("localhost", 1883);
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"Could not connect to broker: {ex.Message}");
-}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
