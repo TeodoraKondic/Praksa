@@ -21,6 +21,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 });
 
 builder.Services.AddSingleton<IMqttService, MqttService>();
+builder.Services.AddSingleton(new RedisService("localhost:6380"));
 builder.Services.AddHostedService<MqttReconnectService>();
 
 var app = builder.Build();
