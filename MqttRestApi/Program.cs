@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -7,7 +9,17 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("Missing connection string.");
+
+
 builder.Services.Configure<MqttSettings>(builder.Configuration.GetSection("Mqtt"));
+ServerVersion? serverVersion = null;
+builder.Services.AddDbContext<AppDbContext>(options =>
+{
+    serverVersion ??= ServerVersion.AutoDetect(connectionString);
+    options.UseMySql(connectionString, serverVersion);
+});
+
 builder.Services.AddSingleton<IMqttService, MqttService>();
 builder.Services.AddHostedService<MqttReconnectService>();
 

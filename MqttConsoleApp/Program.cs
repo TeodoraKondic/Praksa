@@ -23,7 +23,6 @@ while (true)
         break;
     }
     Console.WriteLine("Invalid QoS. Enter 0, 1 or 2.");
-    break;
 }
 
 const string logFileName = "mqtt_messages.log";

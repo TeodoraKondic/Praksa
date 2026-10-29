@@ -1,64 +1,82 @@
 using System.Text;
+using Microsoft.EntityFrameworkCore;
 using MQTTnet;
 using MQTTnet.Client;
 using MQTTnet.Protocol;
+using MySqlConnector;
 
 public class MqttService : IMqttService
 {
     private readonly IMqttClient _client;
-    private readonly List<string> _messages = new List<string>();
-    private readonly object _lock = new object();
-    private readonly Dictionary<string, int> _topics = new Dictionary<string, int>();
+    private readonly IServiceScopeFactory _scopeFactory;
+
 
     public bool IsConnected => _client.IsConnected;
 
-    public MqttService()
+    public MqttService(IServiceScopeFactory scopeFactory)
     {
+        _scopeFactory = scopeFactory;
         var factory = new MqttFactory();
         _client = factory.CreateMqttClient();
 
-        _client.ApplicationMessageReceivedAsync += e =>
+        _client.ApplicationMessageReceivedAsync += async e =>
         {
             var topic = e.ApplicationMessage.Topic;
             var payload = Encoding.UTF8.GetString(e.ApplicationMessage.PayloadSegment);
-            var time = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
-            var entry = $"[{time}] Topic: {topic} | Payload: {payload}";
+            var qos = (int)e.ApplicationMessage.QualityOfServiceLevel;
+            var retain = e.ApplicationMessage.Retain;
+            var receivedAt = DateTime.UtcNow;
 
-            lock (_lock)
+            Console.WriteLine($"[{receivedAt:yyyy-MM-dd HH:mm:ss}] Topic:{topic} | Payload:{payload}");
+
+            try
             {
-                _messages.Add(entry);
+                using var scope = _scopeFactory.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+                var message = new MqttMessage
+                {
+                    Topic = topic,
+                    Payload = payload,
+                    QoS = qos,
+                    Retain = retain,
+                    ReceivedAt = receivedAt
+                };
+
+                db.Messages.Add(message);
+                await db.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Could not save message: {ex.Message}");
             }
 
-            Console.WriteLine(entry);
-            return Task.CompletedTask;
         };
     }
 
     public async Task ConnectAsync(string broker, int port)
     {
-        var options = new MqttClientOptionsBuilder().WithTcpServer(broker, port).WithClientId("restapi-"+ Guid.NewGuid()).Build();
-        await _client.ConnectAsync(options, CancellationToken.None);
-        Dictionary<string, int> savedTopics;
-        lock (_lock)
-        {
-            savedTopics = new Dictionary<string, int>(_topics);
-        }
+        var options = new MqttClientOptionsBuilder().WithTcpServer(broker, port).WithClientId("restapi-" + Guid.NewGuid()).Build();
 
-        foreach (var saved in savedTopics)
+        await _client.ConnectAsync(options, CancellationToken.None);
+
+        try
         {
-            await SubscribeToBrokerAsync(saved.Key, saved.Value);
+            await RestoreSubscriptionsAsync();
+        }
+        catch
+        {
+            await _client.DisconnectAsync();
+            throw;
         }
         Console.WriteLine("Connected to broker");
+
     }
 
-    public async Task SubscribeAsync(string topic,int qos)
+    public async Task SubscribeAsync(string topic, int qos)
     {
+        await SaveSubscriptionAsync(topic, qos);
         await SubscribeToBrokerAsync(topic, qos);
-
-        lock (_lock)
-        {
-            _topics[topic] = qos;
-        }
     }
 
     public async Task PublishAsync(string topic, string payload, int qos)
@@ -67,12 +85,11 @@ public class MqttService : IMqttService
         await _client.PublishAsync(message, CancellationToken.None);
     }
 
-    public List<string> GetMessages()
+    public async Task<List<MqttMessage>> GetMessagesAsync()
     {
-        lock (_lock)
-        {
-            return new List<string>(_messages);
-        }
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.Messages.AsNoTracking().OrderByDescending(m => m.ReceivedAt).Take(100).ToListAsync();
     }
 
     private async Task SubscribeToBrokerAsync(string topic, int qos)
@@ -82,5 +99,42 @@ public class MqttService : IMqttService
         await _client.SubscribeAsync(filter);
     }
 
+    private async Task RestoreSubscriptionsAsync()
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var subscriptions = await db.Subscriptions.ToListAsync();
+
+        foreach (var sub in subscriptions)
+        {
+            await SubscribeToBrokerAsync(sub.Topic, sub.QoS);
+        }
+
+    }
+
+    private async Task SaveSubscriptionAsync(string topic, int qos)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var subscription = await db.Subscriptions.FirstOrDefaultAsync(s => s.Topic == topic);
+
+        if (subscription == null)
+        {
+            db.Subscriptions.Add(new Subscription { Topic = topic, QoS = qos, CreatedAt = DateTime.UtcNow });
+        }
+        else
+        {
+            subscription.QoS = qos;
+        }
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is MySqlException { ErrorCode: MySqlErrorCode.DuplicateKeyEntry })
+        {
+
+        }
+    }
 }
 

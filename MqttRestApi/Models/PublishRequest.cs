@@ -6,6 +6,6 @@ public class PublishRequest
     public string Topic { get; set; } = "";
     [Required]
     public string Payload { get; set; } = "";
-    [Range(0,2)]
+    [Range(0, 2)]
     public int Qos { get; set; }
 }
