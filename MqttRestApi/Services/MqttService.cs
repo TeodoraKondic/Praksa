@@ -9,13 +9,14 @@ public class MqttService : IMqttService
 {
     private readonly IMqttClient _client;
     private readonly IServiceScopeFactory _scopeFactory;
-
+    private readonly RedisService _redisService;
 
     public bool IsConnected => _client.IsConnected;
 
-    public MqttService(IServiceScopeFactory scopeFactory)
+    public MqttService(IServiceScopeFactory scopeFactory, RedisService redisService)
     {
         _scopeFactory = scopeFactory;
+        _redisService = redisService;
         var factory = new MqttFactory();
         _client = factory.CreateMqttClient();
 
@@ -29,28 +30,44 @@ public class MqttService : IMqttService
 
             Console.WriteLine($"[{receivedAt:yyyy-MM-dd HH:mm:ss}] Topic:{topic} | Payload:{payload}");
 
-            try
+            var dbTask=Task.Run(async () =>
             {
-                using var scope = _scopeFactory.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-                var message = new MqttMessage
+                try
                 {
-                    Topic = topic,
-                    Payload = payload,
-                    QoS = qos,
-                    Retain = retain,
-                    ReceivedAt = receivedAt
-                };
+                    using var scope = _scopeFactory.CreateScope();
+                    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-                db.Messages.Add(message);
-                await db.SaveChangesAsync();
-            }
-            catch (Exception ex)
+                    var message = new MqttMessage
+                    {
+                        Topic = topic,
+                        Payload = payload,
+                        QoS = qos,
+                        Retain = retain,
+                        ReceivedAt = receivedAt
+                    };
+
+                    db.Messages.Add(message);
+                    await db.SaveChangesAsync();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Could not save message: {ex.Message}");
+                }
+            });
+            var redisTask=Task.Run(async()=>
             {
-                Console.WriteLine($"Could not save message: {ex.Message}");
-            }
+                try
+                {
+                    await _redisService.SaveMessageAsync(topic, payload);
+                    await _redisService.IncrementTopicCountAsync(topic);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Could not save message to Redis: {ex.Message}");
+                }
+            });
 
+            await Task.WhenAll(dbTask, redisTask);
         };
     }
 

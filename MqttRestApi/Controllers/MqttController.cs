@@ -2,6 +2,7 @@ using System.Data.Common;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MySqlConnector;
+using StackExchange.Redis;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -9,10 +10,13 @@ using MySqlConnector;
 public class MqttController : ControllerBase
 {
     private readonly IMqttService _mqttService;
-
-    public MqttController(IMqttService mqttService)
+    private readonly RedisService _redisService;
+    private readonly AppDbContext _db;
+    public MqttController(IMqttService mqttService, RedisService redisService, AppDbContext db)
     {
         _mqttService = mqttService;
+        _redisService = redisService;
+        _db=db;
     }
 
     [HttpPost("subscribe")]
@@ -26,14 +30,14 @@ public class MqttController : ControllerBase
         try
         {
             await _mqttService.SubscribeAsync(request.Topic, request.Qos);
-            return Ok(new { message = "Subscribed successfully", topic = request.Topic });
+            //return Ok(new { message = "Subscribed successfully", topic = request.Topic });
         }
-        catch (DbUpdateException ex)
+        catch (Exception ex) when (ex is DbException || ex is DbUpdateException)
         {
-            Console.WriteLine($"Database error: {ex.Message}");
+            Console.WriteLine($"Subscribe error: {ex.Message}");
             return DatabaseUnavailable();
         }
-        catch (MySqlException ex)
+        /*catch (MySqlException ex)
         {
             Console.WriteLine($"Database error: {ex.Message}");
             return DatabaseUnavailable();
@@ -42,7 +46,8 @@ public class MqttController : ControllerBase
         {
             Console.WriteLine($"Mqtt subscription failed: {ex.Message}");
             return BrokerUnavailable();
-        }
+        }*/
+        return Ok(new { message = "Subscribed successfully", topic = request.Topic });
 
     }
 
@@ -78,6 +83,49 @@ public class MqttController : ControllerBase
             return DatabaseUnavailable();
         }
     }
+    [HttpGet("stats/{*topic}")]
+    public async Task<IActionResult> GetTopicStats(string topic)
+    {
+        try
+        {
+            var count =await _redisService.GetTopicCountAsync(topic);
+            return Ok(new{topic, messageCount=count, timeWindow="1 hour"});
+        }
+        catch (RedisException ex)
+        {
+            Console.WriteLine($"GetTopicStats failed: {ex.Message}");
+            return RedisUnavailable();
+        }
+    }
+
+    [HttpGet("stats")]
+    public async  Task<IActionResult> GetAllStats()
+    {
+        try
+        {
+            var topics = await _db.Subscriptions.AsNoTracking().Select(s => s.Topic).ToListAsync();
+
+            var stats = new List<object>();
+
+            foreach (var topic in topics)
+            {
+                var count = await _redisService.GetTopicCountAsync(topic);
+                stats.Add(new { topic, messageCount = count, timeWindow = "1 hour" });
+            }
+
+            return Ok(stats);
+        }
+        catch(Exception ex) when (ex is DbException || ex is DbUpdateException)
+        {
+            Console.WriteLine($"GetAllStats failed: {ex.Message}");
+            return DatabaseUnavailable();
+        }
+        catch(RedisException ex)
+        {
+            Console.WriteLine($"GetAllStats failed: {ex.Message}");
+            return RedisUnavailable();
+        }
+    }
 
     private IActionResult BrokerUnavailable()
     {
@@ -86,5 +134,9 @@ public class MqttController : ControllerBase
     private IActionResult DatabaseUnavailable()
     {
         return Problem(detail: "Database is not available.", statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+    private IActionResult RedisUnavailable()
+    {
+        return Problem(detail: "Redis is not available.", statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 }
