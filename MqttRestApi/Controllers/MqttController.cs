@@ -1,4 +1,7 @@
+using System.Data.Common;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using MySqlConnector;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -20,77 +23,68 @@ public class MqttController : ControllerBase
             return BrokerUnavailable();
         }
 
-        if (string.IsNullOrWhiteSpace(request.Topic))
-        {
-            return BadRequest(new { message = "Topic cannot be empty." });
-        }
-
         try
         {
             await _mqttService.SubscribeAsync(request.Topic, request.Qos);
-
-            return Ok(new { message = "Subscribed successfully.", topic = request.Topic });
+            return Ok(new { message = "Subscribed successfully", topic = request.Topic });
+        }
+        catch (DbUpdateException ex)
+        {
+            Console.WriteLine($"Database error: {ex.Message}");
+            return DatabaseUnavailable();
+        }
+        catch (MySqlException ex)
+        {
+            Console.WriteLine($"Database error: {ex.Message}");
+            return DatabaseUnavailable();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Subscribe failed: {ex.Message}");
-
+            Console.WriteLine($"Mqtt subscription failed: {ex.Message}");
             return BrokerUnavailable();
         }
+
     }
 
     [HttpPost("publish")]
     public async Task<IActionResult> Publish(PublishRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Topic))
-        {
-            return BadRequest(new { message = "Topic cannot be empty." });
-        }
-
-        if (string.IsNullOrWhiteSpace(request.Payload))
-        {
-            return BadRequest(new { message = "Payload cannot be empty." });
-        }
-
         if (request.Topic.Contains("+") || request.Topic.Contains("#"))
         {
-            return BadRequest(new { message = "Topic cannot contain wildcards (+ or #) when publishing." });
+            ModelState.AddModelError(nameof(request.Topic), "Topic cannot contain wildcards (+ or #) when publishing.");
+            return ValidationProblem(ModelState);
         }
-
-
-        if (request.Qos < 0 || request.Qos > 2)
-        {
-            return BadRequest(new { message = "QoS must be 0, 1, or 2." });
-        }
-
         if (!_mqttService.IsConnected)
         {
             return BrokerUnavailable();
         }
 
-        try
-        {
-            await _mqttService.PublishAsync(request.Topic, request.Payload, request.Qos);
-            return Ok(new { message = "Message published" });
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Publish failed: {ex.Message}");
-
-            return BrokerUnavailable();
-        }
+        await _mqttService.PublishAsync(request.Topic, request.Payload, request.Qos);
+        return Ok(new { message = "Message published" });
 
     }
 
     [HttpGet("messages")]
-    public IActionResult GetMessages()
+    public async Task<IActionResult> GetMessages()
     {
-        var messages = _mqttService.GetMessages();
-        return Ok(new {messages});
+        try
+        {
+            var messages = await _mqttService.GetMessagesAsync();
+            return Ok(new { messages });
+        }
+        catch (Exception ex) when (ex is DbException || ex is DbUpdateException)
+        {
+            Console.WriteLine($"GetMessages failed: {ex.Message}");
+            return DatabaseUnavailable();
+        }
     }
 
     private IActionResult BrokerUnavailable()
     {
-        return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = "MQTT broker is not available." });
+        return Problem(detail: "MQTT broker is not available.", statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+    private IActionResult DatabaseUnavailable()
+    {
+        return Problem(detail: "Database is not available.", statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 }

@@ -67,9 +67,13 @@ namespace MqttRestApi.Migrations
 
                     b.Property<string>("Topic")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Topic")
+                        .IsUnique();
 
                     b.ToTable("Subscriptions");
                 });

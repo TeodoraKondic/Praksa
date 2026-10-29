@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Options;
 
-public class MqttReconnectService: BackgroundService
+public class MqttReconnectService : BackgroundService
 {
     private readonly IMqttService _mqttService;
     private readonly MqttSettings _settings;
@@ -13,7 +13,7 @@ public class MqttReconnectService: BackgroundService
     }
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
+         while (!stoppingToken.IsCancellationRequested)
         {
             if (!_mqttService.IsConnected)
             {
@@ -23,7 +23,7 @@ public class MqttReconnectService: BackgroundService
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Could not connect to broker: {ex.Message}");
+                    Console.WriteLine($"Could not connect to broker or restore subscriptions: {ex.Message}");
                 }
             }
 
